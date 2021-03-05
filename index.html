@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="ko">
+
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VSFF Parser</title>
+
+    <script src="https://unpkg.com/sweetalert/dist/sweetalert.min.js"></script>
+    <style>
+        .container {
+            padding-right: 15px;
+            padding-left: 15px;
+            margin-right: auto;
+            margin-left: auto;
+        }
+
+        @media (min-width: 768px) {
+            .container {
+                width: 750px;
+            }
+        }
+
+        @media (min-width: 992px) {
+            .container {
+                width: 970px;
+            }
+        }
+
+        @media (min-width: 1200px) {
+            .container {
+                width: 1170px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h1>VSFF Parser</h1>
+        <input type="file" name="file" onchange="on_file_selection(this)" accept=".vsff">
+    </div>
+
+    <script>
+        let pos = 0
+        let fs = 0
+        let fb = {"/":{}}
+
+        function read_string(dataview, length) {
+            let str = ""
+            for (let i = 0; i < length; i++) {
+                str += String.fromCharCode(dataview.getUint8(pos))
+                pos += 1
+            }
+            return str
+        }
+
+        function get_string_range(dataview, start, end) {
+            let str = ""
+            for (let i = start; i < end; i++) {
+                str += String.fromCharCode(dataview.getUint8(i))
+            }
+            return str
+        }
+
+        function container_parse(dataview, d) {
+            if(fs <= 0)
+                return
+            let container_header = read_string(dataview, 2)
+            if (container_header == "\x12\x34") {
+                let type = read_string(dataview, 1)
+                let name_length = dataview.getUint8(pos)
+                pos += 1
+                let name = read_string(dataview, name_length)
+                let data_length = dataview.getUint32(pos, true)
+                pos += 4
+                if (data_length <= 0)
+                    return
+
+                if (type == "\x01") { //Directory
+                    fs -= 8 + name_length
+                    d[name] = {}
+                    container_parse(dataview, d[name])
+                } else if (type == "\x02") { //File
+                    fs -= 8 + name_length + data_length
+                    d[name] = read_string(dataview, data_length)
+                } else {
+                    swal("ERROR", "Invalid Format !", "error")
+                    throw Error("if2")
+                }
+            } else {
+                swal("ERROR", "Invalid Format !", "error")
+                throw Error("if")
+            }
+        }
+
+        async function on_file_selection(e) {
+            let file = e.files[0];
+            let buffer = await file.arrayBuffer();
+            let dataview = new DataView(buffer)
+            let data_length = dataview.byteLength
+            fs = data_length - 6 - 7
+
+            pos = 0
+
+            if (read_string(dataview, 6) != "\x56\x53\x46\x46\x12\x34") {
+                swal("ERROR", "Invalid Header !", "error")
+                return
+            }
+
+            container_parse(dataview, fb["/"])
+            alert(JSON.stringify(fb, null, 4))
+        }
+    </script>
+</body>
+
+</html>
